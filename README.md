@@ -19,11 +19,8 @@ ssh root@<IP_VPS>
 ## Bước 2: Cài Đặt Node.js 22
 
 ```bash
-# Cài Node.js repository
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y nodejs
-
-# Kiểm tra phiên bản
 node --version  # v22.22.2 hoặc mới hơn
 ```
 
@@ -37,7 +34,6 @@ openclaw --version
 ## Bước 4: Cấu Hình Environment
 
 ```bash
-# Set OLLAMA_HOST (chỉ đến server Ollama)
 echo 'export OLLAMA_HOST=http://103.151.52.186:11434' >> /root/.bashrc
 source /root/.bashrc
 ```
@@ -47,7 +43,6 @@ source /root/.bashrc
 ```bash
 mkdir -p /root/.openclaw
 
-# Tạo openclaw.json
 cat > /root/.openclaw/openclaw.json << 'EOF'
 {
   "agents": {
@@ -94,13 +89,21 @@ cat > /root/.openclaw/openclaw.json << 'EOF'
       "botToken": "YOUR_TELEGRAM_BOT_TOKEN"
     }
   },
-  "hooks": {
-    "internal": {
-      "enabled": true,
-      "entries": {
-        "session-memory": {
-          "enabled": true
-        }
+  "commands": {
+    "ownerAllowFrom": [
+      "telegram:YOUR_TELEGRAM_USER_ID"
+    ]
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://103.151.52.186:11434",
+        "models": [
+          {
+            "id": "qwen3.6:35b-a3b",
+            "name": "qwen3.6:35b-a3b"
+          }
+        ]
       }
     }
   }
@@ -111,16 +114,19 @@ EOF
 **Thay thế:**
 - `YOUR_GATEWAY_TOKEN`: Token gateway (sinh ngẫu nhiên: `openssl rand -hex 16`)
 - `YOUR_TELEGRAM_BOT_TOKEN`: Token bot Telegram từ BotFather
+- `YOUR_TELEGRAM_USER_ID`: ID Telegram của bạn (chat với `@userinfobot`)
+
+**⚠️ Lưu ý quan trọng:** Section `models.providers` **bắt buộc phải có** và mỗi model cần cả `id` lẫn `name`!
 
 ## Bước 6: Khởi Động Gateway
 
 ```bash
-# Khởi động gateway
 export OLLAMA_HOST='http://103.151.52.186:11434'
 nohup /usr/bin/node /usr/lib/node_modules/openclaw/dist/index.js gateway --port 18789 > /var/log/openclaw.log 2>&1 &
 
-# Kiểm tra status
-cat /var/log/openclaw.log
+# Kiểm tra log
+cat /var/log/openclaw.log | grep 'agent model'
+# Kết quả: agent model: ollama/qwen3.6:35b-a3b
 ```
 
 ## Bước 7: Cài Đặt Systemd Service (Tùy Chọn)
@@ -151,10 +157,7 @@ systemctl start openclaw-gateway
 ## Kiểm Tra Hoạt Động
 
 ```bash
-# Kiểm tra gateway
 curl -s http://127.0.0.1:18789/health
-
-# Kiểm tra Ollama
 curl -s $OLLAMA_HOST/api/tags | python3 -c "import sys,json; print(json.load(sys.stdin)['models'][0]['name'])"
 ```
 
@@ -169,24 +172,85 @@ curl -s $OLLAMA_HOST/api/tags | python3 -c "import sys,json; print(json.load(sys
 
 ### Gateway không khởi động
 ```bash
-# Kiểm tra log
 cat /var/log/openclaw.log
 # Hoặc
 tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 ```
 
+### Lỗi: Unknown model / FailoverError
+**Triệu chứng:** Bot trả về "Something went wrong while processing your request"
+**Nguyên nhân:** Thiếu hoặc sai cấu hình `models.providers`
+
+**Cách sửa:**
+```bash
+# Kiểm tra config
+cat /root/.openclaw/openclaw.json | python3 -m json.tool | grep -A 10 'models'
+
+# Khẩn cấp: Sửa lại models.providers
+python3 << 'PYEOF'
+import json
+with open('/root/.openclaw/openclaw.json') as f:
+    config = json.load(f)
+
+if 'models' not in config:
+    config['models'] = {}
+if 'providers' not in config['models']:
+    config['models']['providers'] = {}
+config['models']['providers']['ollama'] = {
+    'baseUrl': 'http://103.151.52.186:11434',
+    'models': [{'id': 'qwen3.6:35b-a3b', 'name': 'qwen3.6:35b-a3b'}]
+}
+
+with open('/root/.openclaw/openclaw.json', 'w') as f:
+    json.dump(config, f, indent=2)
+print('Fixed!')
+PYEOF
+
+# Restart gateway
+systemctl restart openclaw-gateway
+# Hoặc nếu chạy manual:
+pkill -9 -f 'openclaw.*gateway'
+export OLLAMA_HOST='http://103.151.52.186:11434'
+nohup /usr/bin/node /usr/lib/node_modules/openclaw/dist/index.js gateway --port 18789 > /var/log/openclaw.log 2>&1 &
+```
+
 ### Ollama không kết nối
 ```bash
-# Kiểm tra kết nối
 curl -s http://103.151.52.186:11434/api/tags
-# Nếu không có phản hồi, kiểm tra firewall hoặc IP
 ```
 
 ### Telegram bot không hoạt động
 ```bash
-# Kiểm tra token trong config
 cat /root/.openclaw/openclaw.json | python3 -c "import sys,json; print(json.load(sys.stdin)['channels']['telegram']['botToken'])"
 ```
+
+### OpenClaw access not configured (cần approve pairing)
+```bash
+# Khi user mới chat với bot lần đầu, bot sẽ hiển thị pairing code
+# Owner chạy lệnh approve:
+openclaw pairing approve telegram <PAIRING_CODE>
+# Ví dụ: openclaw pairing approve telegram TYD7P9KS
+```
+
+### Thêm User Khác Sử Dụng Bot
+**Cách 1: Dùng lệnh pairing**
+```bash
+# Khi user chat lần đầu, bot hiển thị pairing code
+openclaw pairing approve telegram <PAIRING_CODE>
+```
+
+**Cách 2: Thêm trực tiếp vào config**
+```bash
+# Thêm section pairing vào openclaw.json
+"pairing": {
+  "allowedUsers": [
+    "telegram:1042785372",
+    "telegram:XXXXXXXXXX"
+  ]
+}
+```
+
+**Tìm Telegram User ID:** Chat với `@userinfobot` trên Telegram
 
 ## Thông Tin Server
 
@@ -199,7 +263,6 @@ cat /root/.openclaw/openclaw.json | python3 -c "import sys,json; print(json.load
 
 ## Liên Hệ Hỗ Trợ
 
-Nếu gặp sự cố, kiểm tra log:
 ```bash
 journalctl -u openclaw-gateway -f
 # Hoặc
