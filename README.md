@@ -29,3 +29,26 @@ Tạo tên người dùng: Nhập Username (Tên tài khoản) cho bot. Lưu ý:
 Lấy API Token: Ngay sau đó, BotFather sẽ gửi cho bạn một tin nhắn chứa Token API (một chuỗi dài có dạng 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ). Hãy giữ bí mật mã này.
 
 <img width="1588" height="388" alt="image" src="https://github.com/user-attachments/assets/d574b132-1632-4c39-9978-376cbff3a7f6" />
+
+## Bước 3: Cấu hình thay đổi Telegram BOT API để có thể chat với bot của mình
+
+Đi đến đường dẫn có file cấu hình
+```
+cd /root/.openclaw
+```
+Chỉnh sữa file cấu hình sử dụng bot API token của bạn bằng lệnh sau:
+
+```
+nano openclaw.json
+```
+Đi tới dòng 157 và thay đổi API token của riêng bạn đã lấy ở bước trên. Lưu lại file.
+<img width="1708" height="722" alt="image" src="https://github.com/user-attachments/assets/f13fc2a3-3189-43e8-9f8c-bb8b9b6b0122" />
+
+Tiến hành restart lại cấu hình openclaw gateway
+```
+openclaw gateway restart --safe
+```
+<img width="1328" height="374" alt="image" src="https://github.com/user-attachments/assets/f9d759df-8b5d-4066-b964-c9860482e857" />
+
+## Chat với bot của bạn thôi.
+<img width="1706" height="950" alt="image" src="https://github.com/user-attachments/assets/946639ae-a444-422c-ab77-7dbbbc9a5751" />
